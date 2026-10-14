@@ -1,0 +1,12 @@
+# Toggleable human-like mouse jiggler behavior
+
+description: |
+  Toggleable mouse mover. Pressing the bound key toggles a generator that
+  emits only relative cursor motion (INPUT_REL_X/INPUT_REL_Y via the input
+  subsystem, routed to the host by a zmk,input-listener). No buttons, no
+  keystrokes. Because movement travels the input-subsystem route, ZMK's
+  activity tracker counts it, which keeps the central awake while enabled.
+
+compatible: "zmk,behavior-mouse-mover"
+
+include: one_param.yaml

@@ -1,0 +1,18 @@
+#include <dt-bindings/input/input-event-codes.h>
+
+/ {
+    behaviors {
+        mouse_mover: mouse_mover {
+            compatible = "zmk,behavior-mouse-mover";
+            #binding-cells = <1>;
+        };
+    };
+
+    mouse_mover_listener: mouse_mover_listener {
+        compatible = "zmk,input-listener";
+        device = <&mouse_mover>;
+        /* Reports originate from the behavior device itself (central-only code),
+         * so enable this on the central build only, like &trackpad_listener. */
+        status = "disabled";
+    };
+};
