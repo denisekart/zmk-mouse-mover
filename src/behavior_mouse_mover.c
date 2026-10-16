@@ -13,7 +13,7 @@ LOG_MODULE_REGISTER(behavior_mouse_mover, CONFIG_ZMK_LOG_LEVEL);
 /* Bell ramp for gesture micro-steps (quarter-wave, ease-in/out).
  * Prefix sums reach 256 so a step is (dist * p[i]) >> 8 with exact deltas
  * from the difference of consecutive prefixes. */
-static const uint8_t bell_prefix[] = {4, 26, 57, 103, 154, 200, 231, 256};
+static const uint16_t bell_prefix[] = {4, 26, 57, 103, 154, 200, 231, 256};
 #define BELL_STEPS ARRAY_SIZE(bell_prefix)
 
 struct mouse_mover_data {
@@ -49,8 +49,9 @@ static void mm_start_gesture(struct mouse_mover_data *d) {
     uint32_t r = mm_rand(d);
 
     if ((r & 3) == 3) {
-        /* ~1 in 4: resting-hand twitch — one tiny nudge, no walk */
-        d->dx = (int16_t)(1 + (r % 2)) * (((r >> 2) & 1) ? 1 : -1);
+        /* ~1 in 4: resting-hand twitch — one tiny nudge, no walk.
+         * Magnitude from bit 4: bits 0-1 are pinned by this branch's guard. */
+        d->dx = (int16_t)(1 + ((r >> 4) & 1)) * (((r >> 2) & 1) ? 1 : -1);
         d->dy = (int16_t)(1 + ((r >> 8) % 2)) * (((r >> 9) & 1) ? 1 : -1);
         d->step = BELL_STEPS - 1; /* single final step carries the delta */
     } else {
@@ -82,7 +83,7 @@ static void mm_work_fn(struct k_work *work) {
     /* One bell-shaped micro-step: target displacement minus everything sent
      * so far, scaled through the prefix ramp — no accumulated rounding. */
     int i = d->step;
-    uint8_t p = bell_prefix[i];
+    uint16_t p = bell_prefix[i];
     int16_t sx = (int16_t)((((int32_t)d->dx - d->sent_x) * p) >> 8);
     int16_t sy = (int16_t)((((int32_t)d->dy - d->sent_y) * p) >> 8);
 

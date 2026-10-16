@@ -36,7 +36,7 @@ Two nested randomized cycles, xorshift32 PRNG, integer-only:
    ("look away"). Each gesture re-rolls everything, so there is no
    observable period.
 2. **Gesture**: a signed 15–154 count displacement walked in 8
-   bell-ramped micro-steps at 9–22 ms (roughly the trackpad's own 77 Hz),
+   bell-ramped micro-steps at 9–20 ms (roughly the trackpad's own 77 Hz),
    with 1-count line jitter. ~1 in 4 gestures is instead a single ±1–2
    count resting-hand twitch.
 
@@ -51,5 +51,5 @@ Sign re-rolls per gesture, so the cursor net-walk stays bounded on screen.
 - Works over USB and BLE (the listener route is transport-agnostic).
   Some hosts ignore HID mouse activity for unattended sleep policies —
   over USB is the reliable case.
-- OFF state cost: one unscheduled work item and a ~40 B static struct.
+- OFF state cost: one unscheduled work item and a ~56 B static struct.
   No timers, no event subscriptions, no radio traffic.
