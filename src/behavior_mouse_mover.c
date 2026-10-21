@@ -46,7 +46,7 @@ struct mouse_mover_data {
     int16_t arc_ay;
     int16_t arc_bx;
     int16_t arc_by;
-    int8_t step; /* next micro-step index; -1 = dwelling between gestures */
+    int8_t step; /* micro-step index; -1 dwell, -2 forced walk, -3 twitched, walk pending */
     uint16_t step_ms;
     int64_t pause_started; /* uptime when the current pause began */
     int64_t resume_at;     /* earliest uptime the mover may gesture again */
@@ -66,16 +66,24 @@ static int32_t mm_next_interval_ms(struct mouse_mover_data *d) {
     return 20000 + (int32_t)(mm_rand(d) % 40001); /* 20..60 s */
 }
 
-static void mm_start_gesture(struct mouse_mover_data *d) {
+/* Returns true when only the twitch nudge was emitted (walk pending). */
+static bool mm_start_gesture(struct mouse_mover_data *d) {
     uint32_t r = mm_rand(d);
 
     if (d->profile == 0 && d->step == -1 && (r & 3) == 3) {
-        /* ~1 in 4: resting-hand twitch — one tiny nudge, no walk.
+        /* ~1 in 4: resting-hand twitch — a tiny nudge, then a settle beat
+         * before the walk (-3). Every burst ends in a real walk, so no
+         * detector ever sees a twitch-only or consecutive-twitch pattern.
          * Magnitude from bit 4: bits 0-1 are pinned by this branch's guard. */
-        d->dx = (int16_t)(1 + ((r >> 4) & 1)) * (((r >> 2) & 1) ? 1 : -1);
-        d->dy = (int16_t)(1 + ((r >> 8) % 2)) * (((r >> 9) & 1) ? 1 : -1);
-        d->step = BELL_STEPS - 1; /* single final step carries the delta */
-    } else {
+        int16_t tx = (int16_t)(1 + ((r >> 4) & 1)) * (((r >> 2) & 1) ? 1 : -1);
+        int16_t ty = (int16_t)(1 + ((r >> 8) % 2)) * (((r >> 9) & 1) ? 1 : -1);
+        input_report_rel(d->dev, INPUT_REL_X, tx, false, K_NO_WAIT);
+        input_report_rel(d->dev, INPUT_REL_Y, ty, true, K_NO_WAIT);
+        d->step = -3;
+        d->step_ms = 800 + ((r >> 16) % 1601); /* 0.8-2.4 s settle beat */
+        return true;
+    }
+    {
         /* 40..420 px per axis; sign bits 14/15 are disjoint from the
          * magnitude fields (bits 0-8, 3-11). */
         d->dx = (int16_t)(40 + (r % 381)) * (((r >> 14) & 1) ? 1 : -1);
@@ -101,6 +109,7 @@ static void mm_start_gesture(struct mouse_mover_data *d) {
     d->sent_x = 0;
     d->sent_y = 0;
     d->step_ms = 32 + ((r >> 16) % 61); /* 32-92 ms: 63 intervals -> 2 s..6 s */
+    return false;
 }
 
 static void mm_work_fn(struct k_work *work) {
@@ -121,7 +130,10 @@ static void mm_work_fn(struct k_work *work) {
             }
             d->paused = false; /* silence long enough: gesture now */
         }
-        mm_start_gesture(d);
+        if (mm_start_gesture(d)) {
+            k_work_schedule(&d->work, K_MSEC(d->step_ms)); /* settle beat */
+            return;
+        }
         rearm_ms = d->step_ms;
     } else {
         rearm_ms = d->step_ms + (int32_t)((mm_rand(d) >> 8) & 3);

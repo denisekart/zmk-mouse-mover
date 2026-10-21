@@ -44,8 +44,10 @@ so UIs (e.g. a status-screen indicator) can reflect the state.
 2. **Gesture**: a signed 40–420 count displacement per axis walked in 64
    bell-ramped micro-steps at 32–92 ms (with 0–3 ms jitter per step), so a
    gesture lasts 2–6 s with ease-in/out pacing and 1-count line jitter.
-   On the straight profile, ~1 in 4 gestures is instead a single ±1–2
-   count resting-hand twitch.
+   On the straight profile, ~1 in 4 bursts is preceded by a ±1–2 count
+   resting-hand twitch and a 0.8–2.4 s settle beat — every burst still
+   ends in a full walk, so a twitch is never consecutive and never the
+   only movement a detector sees.
    On the curves profile (`1`) the path is an integer quadratic-Bézier
    approximation — a 2-segment polyline bowing 1–5/8 off the chord
    perpendicular, bent either way — sampled at the bell fraction.
