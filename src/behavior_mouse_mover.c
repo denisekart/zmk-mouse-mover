@@ -15,15 +15,19 @@
 LOG_MODULE_REGISTER(behavior_mouse_mover, CONFIG_ZMK_LOG_LEVEL);
 
 #define PAUSE_RESUME_MS 30000 /* resume 30 s after the last user event */
-#define PAUSE_MAX_MS 60000    /* forced resume after 60 s of silence */
+#define PAUSE_MAX_MS 45000    /* forced resume at most 45 s after a pause starts */
 
-/* Bell ramp for gesture micro-steps (quarter-wave, ease-in/out).
+/* Bell ramp for gesture micro-steps (quarter sine-ease, ease-in/out).
  * Prefix sums reach 256 so a step is (dist * p[i]) >> 8 with exact deltas
- * from the difference of consecutive prefixes. 24 entries keep deltas >= 1,
+ * from the difference of consecutive prefixes. 64 entries keep deltas >= 1,
  * so every micro-step visibly moves the cursor over a 2-6 s gesture. */
 static const uint16_t bell_prefix[] = {
-    1,   4,   10,  17,  26,  37,  50,  64,  79,  95,  111, 128,
-    145, 161, 177, 192, 206, 219, 230, 239, 246, 252, 255, 256};
+    1,    2,    3,    4,    5,    6,    7,    10,   12,   15,   18,   22,
+    25,   29,   33,   37,   42,   47,   52,   57,   62,   68,   73,   79,
+    85,   91,   97,   103,  109,  115,  122,  128,  134,  141,  147,  153,
+    159,  165,  171,  177,  183,  188,  194,  199,  204,  209,  214,  219,
+    223,  227,  231,  234,  238,  241,  244,  246,  249,  250,  251,  252,
+    253,  254,  255,  256};
 #define BELL_STEPS ARRAY_SIZE(bell_prefix)
 
 struct mouse_mover_data {
@@ -65,7 +69,7 @@ static int32_t mm_next_interval_ms(struct mouse_mover_data *d) {
 static void mm_start_gesture(struct mouse_mover_data *d) {
     uint32_t r = mm_rand(d);
 
-    if (d->profile == 0 && (r & 3) == 3) {
+    if (d->profile == 0 && d->step == -1 && (r & 3) == 3) {
         /* ~1 in 4: resting-hand twitch — one tiny nudge, no walk.
          * Magnitude from bit 4: bits 0-1 are pinned by this branch's guard. */
         d->dx = (int16_t)(1 + ((r >> 4) & 1)) * (((r >> 2) & 1) ? 1 : -1);
@@ -96,7 +100,7 @@ static void mm_start_gesture(struct mouse_mover_data *d) {
     }
     d->sent_x = 0;
     d->sent_y = 0;
-    d->step_ms = 85 + ((r >> 16) % 166); /* 85-250 ms: 2 s..6 s per gesture */
+    d->step_ms = 32 + ((r >> 16) % 61); /* 32-92 ms: 63 intervals -> 2 s..6 s */
 }
 
 static void mm_work_fn(struct k_work *work) {
@@ -109,7 +113,7 @@ static void mm_work_fn(struct k_work *work) {
     }
 
     if (d->step < 0) {
-        if (d->paused) {
+        if (d->step == -1 && d->paused) {
             int64_t remain = d->resume_at - k_uptime_get();
             if (remain > 0) {
                 k_work_schedule(&d->work, K_MSEC(remain));
@@ -197,14 +201,20 @@ static void mm_note_user_activity(void) {
         want = cap;
     }
     d->resume_at = want;
-    if (d->step < 0) {
+    if (d->step == -2) {
+        return; /* enable confirmation is immune to pausing */
+    }
+    if (d->step == -1) {
         k_work_reschedule(&d->work, K_MSEC(want - now));
     }
-    /* else: let the in-flight gesture finish; mm_work_fn re-arms paused. */
+    /* In-flight walk: mm_work_fn re-arms paused when it completes. */
 }
 
 static int mm_position_listener(const zmk_event_t *eh) {
-    if (as_zmk_position_state_changed(eh) != NULL) {
+    const struct zmk_position_state_changed *ev = as_zmk_position_state_changed(eh);
+    /* Presses only: the releases of the enabling leader keys must not
+     * swallow the confirmation gesture. */
+    if (ev != NULL && ev->state) {
         mm_note_user_activity();
     }
     return 0;
@@ -232,7 +242,7 @@ static void mm_set_enabled(struct mouse_mover_data *d, bool on, uint8_t profile)
     d->profile = profile;
     LOG_INF("mouse mover %s (profile %u)", on ? "on" : "off", profile);
     raise_zmk_mouse_mover_state_changed(
-        (struct zmk_mouse_mover_state_changed){.enabled = on});
+        (struct zmk_mouse_mover_state_changed){.enabled = on, .profile = profile});
 }
 
 static int mm_on_binding_pressed(struct zmk_behavior_binding *binding,
@@ -246,7 +256,7 @@ static int mm_on_binding_pressed(struct zmk_behavior_binding *binding,
         d->profile = (uint8_t)binding->param1;
         LOG_INF("mouse mover profile %u", binding->param1);
         raise_zmk_mouse_mover_state_changed(
-            (struct zmk_mouse_mover_state_changed){.enabled = true});
+            (struct zmk_mouse_mover_state_changed){.enabled = true, .profile = binding->param1});
         return ZMK_BEHAVIOR_OPAQUE;
     }
 
@@ -255,9 +265,10 @@ static int mm_on_binding_pressed(struct zmk_behavior_binding *binding,
         if (d->rng == 0) {
             d->rng = k_cycle_get_32() | 1;
         }
-        d->step = -1;
+        d->step = -2; /* first gesture: full walk, never a twitch */
         d->paused = false;
-        k_work_schedule(&d->work, K_MSEC(mm_next_interval_ms(d)));
+        /* Confirmation gesture ~0.5-1 s after enabling, then normal dwell. */
+        k_work_schedule(&d->work, K_MSEC(500 + (int32_t)(mm_rand(d) % 501)));
     } else {
         k_work_cancel_delayable(&d->work);
         d->paused = false;
