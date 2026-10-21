@@ -41,8 +41,8 @@ so UIs (e.g. a status-screen indicator) can reflect the state.
    ~0.5–1 s after enabling (always a full walk, never a twitch) so
    enabling is immediately visible. Each gesture re-rolls everything, so
    there is no observable period.
-2. **Gesture**: a signed 40–420 count displacement per axis walked in 64
-   bell-ramped micro-steps at 32–92 ms (with 0–3 ms jitter per step), so a
+2. **Gesture**: a signed 40–420 count displacement per axis walked in 96
+   bell-ramped micro-steps at 21–63 ms (with 0–3 ms jitter per step), so a
    gesture lasts 2–6 s with ease-in/out pacing and 1-count line jitter.
    On the straight profile, ~1 in 4 bursts is preceded by a ±1–2 count
    resting-hand twitch and a 0.8–2.4 s settle beat — every burst still
@@ -55,11 +55,11 @@ so UIs (e.g. a status-screen indicator) can reflect the state.
 Sign re-rolls per gesture, so the cursor net-walk stays bounded on screen.
 
 While enabled, any key press (local or split-peripheral) or trackpad event
-pauses the mover: the in-flight gesture finishes, then nothing moves until
-**30 s** after the last user event, forced to at most **45 s** from the
-start of the pause even under continuous typing. The mover's own mouse
+pauses the mover: an in-flight gesture stops within one micro-step (≤63 ms)
+and nothing moves until **30 s** after the **last** user event — no forced
+resume, so continuous typing means no movement. The mover's own mouse
 reports do not count as user activity. While paused the module generates no
-I2C/BLE/HID traffic beyond the trailing gesture.
+I2C/BLE/HID traffic.
 
 ## Requirements & notes
 

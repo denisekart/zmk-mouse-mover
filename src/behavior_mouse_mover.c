@@ -11,23 +11,26 @@
 #include <zmk/event_manager.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/events/mouse_mover_state_changed.h>
+#include <zmk/mouse_mover.h>
 
 LOG_MODULE_REGISTER(behavior_mouse_mover, CONFIG_ZMK_LOG_LEVEL);
 
 #define PAUSE_RESUME_MS 30000 /* resume 30 s after the last user event */
-#define PAUSE_MAX_MS 45000    /* forced resume at most 45 s after a pause starts */
 
 /* Bell ramp for gesture micro-steps (quarter sine-ease, ease-in/out).
  * Prefix sums reach 256 so a step is (dist * p[i]) >> 8 with exact deltas
- * from the difference of consecutive prefixes. 64 entries keep deltas >= 1,
- * so every micro-step visibly moves the cursor over a 2-6 s gesture. */
+ * from the difference of consecutive prefixes. 96 entries keep deltas 1-4
+ * and >= 1, so every micro-step visibly moves the cursor over a 2-6 s
+ * gesture; the denser ramp removes the stepping the 64-entry table showed. */
 static const uint16_t bell_prefix[] = {
-    1,    2,    3,    4,    5,    6,    7,    10,   12,   15,   18,   22,
-    25,   29,   33,   37,   42,   47,   52,   57,   62,   68,   73,   79,
-    85,   91,   97,   103,  109,  115,  122,  128,  134,  141,  147,  153,
-    159,  165,  171,  177,  183,  188,  194,  199,  204,  209,  214,  219,
-    223,  227,  231,  234,  238,  241,  244,  246,  249,  250,  251,  252,
-    253,  254,  255,  256};
+    1,    2,    3,    4,    5,    6,    7,    8,    9,   10,   11,   12,
+   14,   16,   18,   20,   22,   24,   26,   28,   31,   34,   37,   40,
+   43,   46,   49,   52,   55,   58,   61,   64,   68,   72,   76,   80,
+   84,   88,   92,   96,  100,  104,  108,  112,  116,  120,  124,  128,
+  132,  136,  140,  144,  148,  152,  156,  160,  164,  168,  172,  176,
+  180,  184,  188,  192,  195,  198,  201,  204,  207,  210,  213,  216,
+  219,  222,  225,  228,  230,  232,  234,  236,  238,  240,  242,  244,
+  245,  246,  247,  248,  249,  250,  251,  252,  253,  254,  255,  256};
 #define BELL_STEPS ARRAY_SIZE(bell_prefix)
 
 struct mouse_mover_data {
@@ -108,7 +111,7 @@ static bool mm_start_gesture(struct mouse_mover_data *d) {
     }
     d->sent_x = 0;
     d->sent_y = 0;
-    d->step_ms = 32 + ((r >> 16) % 61); /* 32-92 ms: 63 intervals -> 2 s..6 s */
+    d->step_ms = 21 + ((r >> 16) % 43); /* 21-63 ms: 95 intervals -> 2 s..6 s */
     return false;
 }
 
@@ -121,15 +124,17 @@ static void mm_work_fn(struct k_work *work) {
         return;
     }
 
-    if (d->step < 0) {
-        if (d->step == -1 && d->paused) {
-            int64_t remain = d->resume_at - k_uptime_get();
-            if (remain > 0) {
-                k_work_schedule(&d->work, K_MSEC(remain));
-                return;
-            }
-            d->paused = false; /* silence long enough: gesture now */
+    if (d->paused && d->step != -2) {
+        d->step = -1; /* abort any in-flight walk / pending settle beat */
+        int64_t remain = d->resume_at - k_uptime_get();
+        if (remain > 0) {
+            k_work_schedule(&d->work, K_MSEC(remain));
+            return;
         }
+        d->paused = false; /* silence long enough: gesture now */
+    }
+
+    if (d->step < 0) {
         if (mm_start_gesture(d)) {
             k_work_schedule(&d->work, K_MSEC(d->step_ms)); /* settle beat */
             return;
@@ -182,12 +187,9 @@ static void mm_work_fn(struct k_work *work) {
     d->step++;
     if (d->step >= (int)BELL_STEPS) {
         d->step = -1;
-        if (d->paused) {
-            int64_t remain = d->resume_at - k_uptime_get();
-            rearm_ms = (remain > 0) ? (int32_t)remain : 0;
-        } else {
-            rearm_ms = mm_next_interval_ms(d);
-        }
+        /* Walk end: the next firing re-checks `paused` via the preempt
+         * block at the top of this function. */
+        rearm_ms = mm_next_interval_ms(d);
     }
     k_work_schedule(&d->work, K_MSEC(rearm_ms));
 }
@@ -207,19 +209,14 @@ static void mm_note_user_activity(void) {
         d->pause_started = now;
         d->paused = true;
     }
-    int64_t want = now + PAUSE_RESUME_MS;
-    int64_t cap = d->pause_started + PAUSE_MAX_MS;
-    if (want > cap) {
-        want = cap;
-    }
-    d->resume_at = want;
+    d->resume_at = now + PAUSE_RESUME_MS;
     if (d->step == -2) {
         return; /* enable confirmation is immune to pausing */
     }
-    if (d->step == -1) {
-        k_work_reschedule(&d->work, K_MSEC(want - now));
+    if (d->step < 0) {
+        k_work_reschedule(&d->work, K_MSEC(PAUSE_RESUME_MS));
     }
-    /* In-flight walk: mm_work_fn re-arms paused when it completes. */
+    /* In-flight walks are preempted by mm_work_fn on its next firing. */
 }
 
 static int mm_position_listener(const zmk_event_t *eh) {
@@ -255,6 +252,16 @@ static void mm_set_enabled(struct mouse_mover_data *d, bool on, uint8_t profile)
     LOG_INF("mouse mover %s (profile %u)", on ? "on" : "off", profile);
     raise_zmk_mouse_mover_state_changed(
         (struct zmk_mouse_mover_state_changed){.enabled = on, .profile = profile});
+}
+
+void zmk_mouse_mover_force_off(void) {
+    struct mouse_mover_data *d = mm_instance;
+
+    if (d != NULL && d->enabled) {
+        k_work_cancel_delayable(&d->work);
+        d->paused = false;
+        mm_set_enabled(d, false, d->profile);
+    }
 }
 
 static int mm_on_binding_pressed(struct zmk_behavior_binding *binding,
