@@ -20,27 +20,46 @@ no polling while off.
 };
 ```
 
-Bind `&mouse_mover 0` to any trigger (key, layer, leader sequence, combo):
+Bind `&mouse_mover <profile>` to any trigger (key, layer, leader sequence,
+combo); the parameter selects the movement profile:
 
 ```dts
-jiggle_seq { sequence = <M M>; bindings = <&mouse_mover 0>; };
+mouse_mover_seq     { sequence = <M M>; bindings = <&mouse_mover 0>; }; /* straight */
+mouse_mover_nat_seq { sequence = <M N>; bindings = <&mouse_mover 1>; }; /* natural curves */
 ```
 
-The parameter selects the movement profile (only `0` today).
+Each press toggles the mover: off when running, otherwise on with that
+profile. Pressing the *other* profile's binding while running switches
+profiles live, without interrupting the in-flight gesture.
+
+Every toggle raises `zmk_mouse_mover_state_changed` (`bool enabled`) so
+UIs (e.g. a status-screen indicator) can reflect the state.
 
 ## Movement model
 
 Two nested randomized cycles, xorshift32 PRNG, integer-only:
 
-1. **Dwell**: uniform 3–20 s between gestures; 1-in-8 dwells double
-   ("look away"). Each gesture re-rolls everything, so there is no
-   observable period.
-2. **Gesture**: a signed 15–154 count displacement walked in 8
-   bell-ramped micro-steps at 9–20 ms (roughly the trackpad's own 77 Hz),
-   with 1-count line jitter. ~1 in 4 gestures is instead a single ±1–2
+1. **Dwell**: uniform 20–60 s between gestures. Each gesture re-rolls
+   everything, so there is no observable period.
+2. **Gesture**: a signed 40–420 count displacement per axis walked in 24
+   bell-ramped micro-steps at 85–250 ms (with 0–3 ms jitter per step), so a
+   gesture lasts 2–6 s with ease-in/out pacing and 1-count line jitter.
+   On the straight profile, ~1 in 4 gestures is instead a single ±1–2
    count resting-hand twitch.
+   On the curves profile (`1`) the path is an integer quadratic-Bézier
+   approximation — a 2-segment polyline bowing 1–5/8 off the chord
+   perpendicular, bent either way — sampled at the bell fraction.
 
 Sign re-rolls per gesture, so the cursor net-walk stays bounded on screen.
+
+## Pause on user activity
+
+While enabled, any key press (local or split-peripheral) or trackpad event
+pauses the mover: the in-flight gesture finishes, then nothing moves until
+**30 s** after the last user event, forced to at most **60 s** from the
+start of the pause even under continuous typing. The mover's own mouse
+reports do not count as user activity. While paused the module generates no
+I2C/BLE/HID traffic beyond the trailing gesture.
 
 ## Requirements & notes
 
@@ -51,5 +70,5 @@ Sign re-rolls per gesture, so the cursor net-walk stays bounded on screen.
 - Works over USB and BLE (the listener route is transport-agnostic).
   Some hosts ignore HID mouse activity for unattended sleep policies —
   over USB is the reliable case.
-- OFF state cost: one unscheduled work item and a ~56 B static struct.
-  No timers, no event subscriptions, no radio traffic.
+- OFF state cost: one unscheduled work item and a ~80 B static struct;
+  the activity listeners piggyback on event/input dispatch ZMK runs anyway.
