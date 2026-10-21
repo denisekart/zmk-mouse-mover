@@ -241,10 +241,10 @@ static int mm_on_binding_pressed(struct zmk_behavior_binding *binding,
     struct mouse_mover_data *d = dev->data;
     ARG_UNUSED(event);
 
-    if (d->enabled && binding->param != d->profile) {
+    if (d->enabled && binding->param1 != d->profile) {
         /* Other-profile press while running: switch curves live. */
-        d->profile = binding->param;
-        LOG_INF("mouse mover profile %u", binding->param);
+        d->profile = (uint8_t)binding->param1;
+        LOG_INF("mouse mover profile %u", binding->param1);
         raise_zmk_mouse_mover_state_changed(
             (struct zmk_mouse_mover_state_changed){.enabled = true});
         return ZMK_BEHAVIOR_OPAQUE;
@@ -262,7 +262,7 @@ static int mm_on_binding_pressed(struct zmk_behavior_binding *binding,
         k_work_cancel_delayable(&d->work);
         d->paused = false;
     }
-    mm_set_enabled(d, on, binding->param);
+    mm_set_enabled(d, on, (uint8_t)binding->param1);
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
