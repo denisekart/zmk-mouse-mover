@@ -37,7 +37,7 @@ so UIs (e.g. a status-screen indicator) can reflect the state.
 
 ## Movement model
 
-1. **Dwell**: uniform 20–60 s between gestures; the first gesture fires
+1. **Dwell**: uniform 20–40 s between gestures; the first gesture fires
    ~0.5–1 s after enabling (always a full walk, never a twitch) so
    enabling is immediately visible. Each gesture re-rolls everything, so
    there is no observable period.

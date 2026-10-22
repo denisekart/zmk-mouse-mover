@@ -66,7 +66,7 @@ static uint32_t mm_rand(struct mouse_mover_data *d) {
 }
 
 static int32_t mm_next_interval_ms(struct mouse_mover_data *d) {
-    return 20000 + (int32_t)(mm_rand(d) % 40001); /* 20..60 s */
+    return 20000 + (int32_t)(mm_rand(d) % 20001); /* 20..40 s */
 }
 
 /* Returns true when only the twitch nudge was emitted (walk pending). */
