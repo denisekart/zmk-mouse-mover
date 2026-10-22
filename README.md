@@ -41,7 +41,7 @@ so UIs (e.g. a status-screen indicator) can reflect the state.
    ~0.5–1 s after enabling (always a full walk, never a twitch) so
    enabling is immediately visible. Each gesture re-rolls everything, so
    there is no observable period.
-2. **Gesture**: a signed 40–420 count displacement per axis walked in 96
+2. **Gesture**: a signed 120–680 count displacement per axis walked in 96
    bell-ramped micro-steps at 21–63 ms (with 0–3 ms jitter per step), so a
    gesture lasts 2–6 s with ease-in/out pacing and 1-count line jitter.
    On the straight profile, ~1 in 4 bursts is preceded by a ±1–2 count

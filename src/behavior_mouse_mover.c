@@ -87,16 +87,16 @@ static bool mm_start_gesture(struct mouse_mover_data *d) {
         return true;
     }
     {
-        /* 40..420 px per axis; sign bits 14/15 are disjoint from the
-         * magnitude fields (bits 0-8, 3-11). */
-        d->dx = (int16_t)(40 + (r % 381)) * (((r >> 14) & 1) ? 1 : -1);
-        d->dy = (int16_t)(40 + ((r >> 3) % 381)) * (((r >> 15) & 1) ? 1 : -1);
+        /* 120..680 px per axis; sign bits 14/15 are disjoint from the
+         * magnitude fields (bits 0-9, 3-12). */
+        d->dx = (int16_t)(120 + (r % 561)) * (((r >> 14) & 1) ? 1 : -1);
+        d->dy = (int16_t)(120 + ((r >> 3) % 561)) * (((r >> 15) & 1) ? 1 : -1);
         d->step = 0;
         if (d->profile == 1) {
             /* Integer quadratic-Bezier as a 2-segment polyline: bow the
              * chord midpoint 1..5 eighths off perpendicular, endpoint at
              * 3/4 chord + full bow so the path arcs then straightens.
-             * |dy * kb| <= 420 * 5 fits int32; storage stays int16. */
+             * |dy * kb| <= 680 * 5 fits int32; storage stays int16. */
             int kb = 1 + ((r >> 17) % 5);
             if ((r >> 20) & 1) {
                 kb = -kb;
