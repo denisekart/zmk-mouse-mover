@@ -20,7 +20,7 @@ LOG_MODULE_REGISTER(behavior_mouse_mover, CONFIG_ZMK_LOG_LEVEL);
 /* Bell ramp for gesture micro-steps (quarter sine-ease, ease-in/out).
  * Prefix sums reach 256 so a step is (dist * p[i]) >> 8 with exact deltas
  * from the difference of consecutive prefixes. 96 entries keep deltas 1-4
- * and >= 1, so every micro-step visibly moves the cursor over a 2-6 s
+ * and >= 1, so every micro-step visibly moves the cursor over a 2.5-7.5 s
  * gesture; the denser ramp removes the stepping the 64-entry table showed. */
 static const uint16_t bell_prefix[] = {
     1,    2,    3,    4,    5,    6,    7,    8,    9,   10,   11,   12,
@@ -87,16 +87,16 @@ static bool mm_start_gesture(struct mouse_mover_data *d) {
         return true;
     }
     {
-        /* 120..680 px per axis; sign bits 14/15 are disjoint from the
+        /* 180..1020 px per axis; sign bits 14/15 are disjoint from the
          * magnitude fields (bits 0-9, 3-12). */
-        d->dx = (int16_t)(120 + (r % 561)) * (((r >> 14) & 1) ? 1 : -1);
-        d->dy = (int16_t)(120 + ((r >> 3) % 561)) * (((r >> 15) & 1) ? 1 : -1);
+        d->dx = (int16_t)(180 + (r % 841)) * (((r >> 14) & 1) ? 1 : -1);
+        d->dy = (int16_t)(180 + ((r >> 3) % 841)) * (((r >> 15) & 1) ? 1 : -1);
         d->step = 0;
         if (d->profile == 1) {
             /* Integer quadratic-Bezier as a 2-segment polyline: bow the
              * chord midpoint 1..5 eighths off perpendicular, endpoint at
              * 3/4 chord + full bow so the path arcs then straightens.
-             * |dy * kb| <= 680 * 5 fits int32; storage stays int16. */
+             * |dy * kb| <= 1020 * 5 fits int32; storage stays int16. */
             int kb = 1 + ((r >> 17) % 5);
             if ((r >> 20) & 1) {
                 kb = -kb;
@@ -111,7 +111,7 @@ static bool mm_start_gesture(struct mouse_mover_data *d) {
     }
     d->sent_x = 0;
     d->sent_y = 0;
-    d->step_ms = 21 + ((r >> 16) % 43); /* 21-63 ms: 95 intervals -> 2 s..6 s */
+    d->step_ms = 26 + ((r >> 16) % 54); /* 26-79 ms: 95 intervals -> 2.5 s..7.5 s */
     return false;
 }
 
